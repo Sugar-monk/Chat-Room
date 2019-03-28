@@ -1,14 +1,14 @@
-#pragma once
-
-#include <iostream>
-#include <pthread.h>
 #include "ProtocolUtil.hpp"
 #include "UserManager.hpp"
-#include "json/json.h"
 #include "DataPool.hpp"
 #include "Message.hpp"
+#include <pthread.h>
+#include <iostream>
+#include "Log.hpp"
+#pragma  once
 
-class CharSever;
+
+class ChatServer;
 
 //为了方便实用，定义一个Param结构体
 class Param
@@ -20,7 +20,7 @@ class Param
 		std::string ip;
 		int port;
 	public:
-		Param(ChatServer *sp_, int &sock_, const std:;string &ip_, const int port_)
+		Param(ChatServer *sp_, int &sock_, const std::string &ip_, const int &port_)
 			:sp(sp_),sock(sock_),ip(ip_),port(port_)
 		{}
 		~Param()
@@ -58,48 +58,51 @@ class ChatServer
 
 		}
 
-		unsigned int RegisterUser(const std::string &name,\			//	//注册一个新的ID
-									const std::string &school,\
-										const std:;string &passwd);	
+		unsigned int RegisterUser(const std::string &name,			//	//注册一个新的ID
+									const std::string &school,
+										const std::string &passwd)	
 		{
 			return um.Insert(name, school, passwd);
 		}
 
-		unsigned int LoginUser(const std::string &id,\			//登录验证
-								const std::string &passed\
-								const std::string &id\
-								const int &port)	
+		unsigned int LoginUser(const unsigned int &id,			//登录验证
+								const std::string &passwd,
+									const std::string &ip,
+										const int port)	
 		{
-			unsigned int result = um.Check(id, passwd);
-			if(result >= 10000)
-			{
-				//um.MoveToOnline(id, ip, port);					//将客户移到用户在线列表
-			}
-			return result;
+			return um.Check(id, passwd);
 		}
+		//UDP		生产着消费者模型中生产者
 		void Product()
 		{
 			std::string message;
 			struct sockaddr_in peer;
-			Util::RecvMessage(udp_work_sock, message);
+			Util::RecvMessage(udp_work_sock, message, peer);
 			std::cout << "debug: recv message:" << message << std::endl;
-			if(!message.emtey())
+			if(!message.empty())
 			{
 				pool.PutMessage(message);
 				Message m;
 				m.ToRecvValue(message);		//反序列化
-				um.AddOlineUser(m.Id(), peer);
+				if(m.Type() == LOGIN_TYPE)
+				{
+					um.AddOnlineUser(m.Id(), peer);
+					std::string name_, school_;
+					um.GetUserInfo(m.Id(), name_, school_);
+					Message new_mesg(name_, school_, m.Text(), m.Id(), m.Type());
+					new_mesg.ToSendString(message);
+				}
 			}
 		}
-		void Consume()
+		void Consume()				//生产者消费者模型中的消费者
 		{
 			std::string message;
 			pool.GetMessage(message);
 			std::cout << "debug: send message:" << message << std::endl;
 			auto online = um.OnlineUser();
-			if(auto it = online.begin(); it != online.end(); it++)
+			for(auto it = online.begin(); it != online.end(); ++it)
 			{
-				Util::sendMessage(udp_work_sock, message, it->second);
+				Util::SendMessage(udp_work_sock, message, it->second);
 			}
 		}
 		static void *HandlerRequest(void *arg)
@@ -115,14 +118,13 @@ class ChatServer
 
 			Request rq;
 			Util::RecvRequest(sock, rq);
-			Json::Valve root;
+			Json::Value root;
 			
 			LOG(rq.text, NORMAL);
 
-			Until::UnSeralizer(rq.text, root);		//对正文反序列化
+			Util::UnSeralizer(rq.text, root);		//对正文反序列化
 			if(rq.method == "REGISTER")					//注册
 			{
-
 				std::string name = root["name"].asString();
 				std::string school = root["school"].asString();
 				std::string passwd = root["passwd"].asString();
@@ -134,7 +136,7 @@ class ChatServer
 				unsigned int id = root["id"].asInt();
 				std::string passwd = root["passwd"].asString();
 
-				unsigned int result = sp->LoginUser(id, passed, ip, port);		//登录验证
+				unsigned int result = sp->LoginUser(id, passwd, ip, port);		//登录验证
 				send(sock, &result, sizeof(result), 0);
 			}
 			else
@@ -150,14 +152,12 @@ class ChatServer
 			//运行主线程
 			for(;;)
 			{
-				std::string ip;
-				int port;
-				int sock = SockerApi::Accept(tcp_listen_sock, ip, port);
+				int sock = SocketApi::Accept(tcp_listen_sock, ip, port);
 				if(sock > 0)			//sock 登录成功
 				{
 					std::cout << "get a new client" << ip << ":" << port << std::endl;	
 
-					Prama *p = new Param(this, sock, ip, port);
+					Param *p = new Param(this, sock, ip, port);
 					pthread_t tid;
 					pthread_create(&tid, NULL, HandlerRequest, p);		//让这个线程处理请求
 				}
@@ -167,3 +167,7 @@ class ChatServer
 		~ChatServer()
 		{}
 };
+
+
+
+

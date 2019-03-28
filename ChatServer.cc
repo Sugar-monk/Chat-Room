@@ -20,7 +20,7 @@ void *RunProduct(void *arg)
 void *RunConsume(void *arg)
 {
 	pthread_detach(pthread_self());
-	ChatServer *sp = (chatServer*)arg;
+	ChatServer *sp = (ChatServer*)arg;
 	for(;;)
 	{
 		sp->Consume();
@@ -37,13 +37,14 @@ int main(int argc, char *argv[])
 	int tcp_port = atoi(argv[1]);
 	int udp_port = atoi(argv[2]);
 
-	ChartServer *sp = new ChatServer(tcp_port, cdp_port);
-	sp->IntiServer();
+	ChatServer *sp = new ChatServer(tcp_port, udp_port);
+	sp->InitServer();
 	
-	pthread_t c,p(&c, NULL, RunProduct, (void*)sp);
+	pthread_t c;
+	//pthread_t p(&c, NULL, RunProduct, (void*)sp);
 	pthread_create(&c, NULL, RunConsume, (void*)sp);
 
 	sp->Start();
-
+	
 	return 0;
 }
